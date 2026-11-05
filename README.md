@@ -31,7 +31,8 @@ To add shortcut in blender:
 
 ## Preferences
 
-All the preferences for add-on are available in the Add-ons tab of Preferences window.
+All the preferences for add-on are available in the Add-ons tab of Preferences window. 
+They are also saved to `bindings.json` in the add-on's user directory (`extensions/.user/<repository>/leader_key/` inside Blender's user config).
 
 ![alt text](http://i.imgur.com/AVDuwCN.jpg "Add-on Preferences")
 

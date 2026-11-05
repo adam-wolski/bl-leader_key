@@ -1,3 +1,5 @@
+import json
+import os
 from time import time
 import bpy
 
@@ -170,19 +172,100 @@ class Bindings:
             return None
 
 
+CONFIG_FILE = 'bindings.json'
+BINDING_PROPS = ('kstr', 'func', 'ctype', 'cmode')
+SETTING_PROPS = ('timeout', 'time_for_next')
+
+# Set while restoring from file so property updates don't write it back
+_loading = False
+
+def _config_path():
+    try:
+        directory = bpy.utils.extension_path_user(__package__, create=True)
+    except ValueError:
+        # legacy add-on
+        directory = bpy.utils.user_resource('CONFIG', path='leader_key',
+                                            create=True)
+    return os.path.join(directory, CONFIG_FILE)
+
+
+def _get_prefs(context=None):
+    context = context or bpy.context
+    addon = context.preferences.addons.get(__package__)
+    return addon.preferences if addon else None
+
+
+def save_bindings(context=None):
+    prefs = _get_prefs(context)
+    if _loading or prefs is None:
+        return
+    data = {name: getattr(prefs, name) for name in SETTING_PROPS}
+    data['bindings'] = [{name: getattr(b, name) for name in BINDING_PROPS}
+                        for b in prefs.bindings]
+    with open(_config_path(), 'w') as f:
+        json.dump(data, f, indent=2)
+
+
+def load_bindings(context=None):
+    """
+    Restore preferences from file. If there's no file yet, write current
+    preferences to it instead, so nothing set before is lost.
+    """
+    global _loading
+    prefs = _get_prefs(context)
+    if prefs is None:
+        return
+    path = _config_path()
+    if not os.path.exists(path):
+        save_bindings(context)
+        return
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except (OSError, ValueError) as e:
+        print('Leader Key: could not read {}: {}'.format(path, e))
+        return
+    _loading = True
+    try:
+        for name in SETTING_PROPS:
+            if name in data:
+                setattr(prefs, name, data[name])
+        prefs.bindings.clear()
+        for entry in data.get('bindings', []):
+            binding = prefs.bindings.add()
+            for name in BINDING_PROPS:
+                if name not in entry:
+                    continue
+                try:
+                    setattr(binding, name, entry[name])
+                except TypeError:
+                    # Area type or mode not present in this blender version
+                    pass
+    finally:
+        _loading = False
+
+
+def _on_update(self, context):
+    save_bindings(context)
+
+
 class LeaderKeyBinding(bpy.types.PropertyGroup):
     kstr: bpy.props.StringProperty(name="Key String",
-                                   description=KEYSTR_DESC)
+                                   description=KEYSTR_DESC,
+                                   update=_on_update)
     func: bpy.props.StringProperty(name="Function",
-                                   description=FUNC_DESC)
+                                   description=FUNC_DESC,
+                                   update=_on_update)
     ctype: bpy.props.EnumProperty(items=CTYPE_ENUM,
                                   name="Context area type",
                                   description=CTYPE_DESC,
-                                  default="All")
+                                  default="All",
+                                  update=_on_update)
     cmode: bpy.props.EnumProperty(items=CMODE_ENUM,
                                   name="Context mode",
                                   description=CMODE_DESC,
-                                  default="All")
+                                  default="All",
+                                  update=_on_update)
 
 
 class LeaderKeyBindingAdd(bpy.types.Operator):
@@ -195,6 +278,7 @@ class LeaderKeyBindingAdd(bpy.types.Operator):
         prefs = context.preferences.addons[__package__].preferences
         prefs.bindings.add()
         context.preferences.is_dirty = True
+        save_bindings(context)
         return {'FINISHED'}
 
 
@@ -210,6 +294,7 @@ class LeaderKeyBindingRemove(bpy.types.Operator):
         prefs = context.preferences.addons[__package__].preferences
         prefs.bindings.remove(self.index)
         context.preferences.is_dirty = True
+        save_bindings(context)
         return {'FINISHED'}
 
 
@@ -268,14 +353,16 @@ class LeaderKeyPreferences(bpy.types.AddonPreferences):
         name="Timeout",
         description="Amount of time for typing keys. In seconds.",
         default=1.0,
-        soft_min=0.01)
+        soft_min=0.01,
+        update=_on_update)
 
     time_for_next: bpy.props.FloatProperty(
         name="Wait for next",
         description=("Amount of time for which to wait for next key if "
                      "matching key is already found. In seconds."),
         default=0.5,
-        soft_min=0.01)
+        soft_min=0.01,
+        update=_on_update)
 
     bindings: bpy.props.CollectionProperty(type=LeaderKeyBinding)
 

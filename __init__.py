@@ -19,6 +19,7 @@ bl_info = {
 def register():
     for cls in leader_key.classes:
         bpy.utils.register_class(cls)
+    leader_key.load_bindings()
 
 def unregister():
     for cls in reversed(leader_key.classes):
