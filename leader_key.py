@@ -341,7 +341,8 @@ class LeaderKeyBindingSearch(bpy.types.Operator):
 
     def execute(self, context):
         prefs = context.preferences.addons[__package__].preferences
-        prefs.bindings[self.index].func = 'bpy.ops.{}()'.format(self.operator)
+        prefs.bindings[self.index].func = (
+            "bpy.ops.{}('INVOKE_DEFAULT')".format(self.operator))
         context.preferences.is_dirty = True
         return {'FINISHED'}
 

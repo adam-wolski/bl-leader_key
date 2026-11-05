@@ -44,7 +44,7 @@ They are also saved to `bindings.json` in the add-on's user directory (`extensio
 
 * `Key String` - Sequence of key events separated by space. Can be almost any of the types in [event.type](https://docs.blender.org/api/current/bpy.types.Event.html#bpy.types.Event.type).
 
-* `Function` - Python function to be executed after sequenced is matched. Can be anything python script could call so you can type either something blender specific like: `bpy.ops.mesh.primitive_torus_add()` or generic python: `print("Hello World")`. Click the magnifying glass next to the field to search all available operators by name.
+* `Function` - Python function to be executed after sequenced is matched. Can be anything python script could call so you can type either something blender specific like: `bpy.ops.mesh.primitive_torus_add()` or generic python: `print("Hello World")`. Click the magnifying glass next to the field to search all available operators by name. Picking one fills in its call as `bpy.ops.<operator>('INVOKE_DEFAULT')`, so it behaves like a regular shortcut. Without `'INVOKE_DEFAULT'`, interactive operators such as `bpy.ops.wm.search_menu()` or `bpy.ops.transform.translate()` run their non-interactive version and may silently do nothing.
 
 * `Context area type` - Context area in which to use this binding. Select 'All' to not bind it to any of the specific types of the window.
 
