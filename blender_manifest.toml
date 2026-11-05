@@ -1,0 +1,14 @@
+schema_version = "1.0.0"
+
+id = "leader_key"
+version = "0.1.0"
+name = "Leader Key"
+tagline = "Vim like leader key functionality for blender"
+maintainer = "Adam Wolski <miniukof@gmail.com>"
+type = "add-on"
+website = "https://github.com/miniukof/bl-leader_key"
+tags = ["User Interface"]
+
+blender_version_min = "4.2.0"
+
+license = ["SPDX:GPL-3.0-or-later"]

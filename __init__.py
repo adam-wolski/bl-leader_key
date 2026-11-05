@@ -9,15 +9,17 @@ bl_info = {
                      'or access through search menu.'),
     'description' : 'Vim like <leader> key functionality for blender',
     'author'      : 'Adam Wolski(miniukof@gmail.com)',
-    'wiki_url'    : 'https://github.com/miniukof/bl-leader_key',
-    'version'     : (0, 0, 1),
-    'blender'     : (2, 76, 11),
+    'doc_url'     : 'https://github.com/miniukof/bl-leader_key',
+    'version'     : (0, 1, 0),
+    'blender'     : (4, 2, 0),
     'category'    : 'User Interface',
 }
 
 
 def register():
-    bpy.utils.register_module(__name__)
+    for cls in leader_key.classes:
+        bpy.utils.register_class(cls)
 
 def unregister():
-    bpy.utils.unregister_module(__name__)
+    for cls in reversed(leader_key.classes):
+        bpy.utils.unregister_class(cls)

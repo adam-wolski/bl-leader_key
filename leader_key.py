@@ -1,13 +1,8 @@
 from time import time
 import bpy
 
-# Haven't found good way for dynamically creating settings in user-prefs.
-# So on start create fixed number of properties.
-BINDINGS_MAX = 25
-
-
 # All of the events that can be used when writing Key String for bindings.
-EVENTS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N',
+_EVENTS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N',
           'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'ZERO',
           'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT',
           'NINE', 'LEFT_CTRL', 'LEFT_ALT', 'LEFT_SHIFT', 'RIGHT_ALT',
@@ -38,40 +33,21 @@ EVENTS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N',
           'NDOF_BUTTON_7', 'NDOF_BUTTON_8', 'NDOF_BUTTON_9', 'NDOF_BUTTON_10',
           'NDOF_BUTTON_A', 'NDOF_BUTTON_B', 'NDOF_BUTTON_C']
 
-CTYPE_ENUM = [('VIEW_3D', 'VIEW_3D', ''),
-              ('TIMELINE', 'TIMELINE', ''),
-              ('GRAPH_EDITOR', 'GRAPH_EDITOR', ''),
-              ('DOPESHEET_EDITOR', 'DOPESHEET_EDITOR', ''),
-              ('NLA_EDITOR', 'NLA_EDITOR', ''),
-              ('IMAGE_EDITOR', 'IMAGE_EDITOR', ''),
-              ('SEQUENCE_EDITOR', 'SEQUENCE_EDITOR', ''),
-              ('CLIP_EDITOR', 'CLIP_EDITOR', ''),
-              ('TEXT_EDITOR', 'TEXT_EDITOR', ''),
-              ('NODE_EDITOR', 'NODE_EDITOR', ''),
-              ('LOGIC_EDITOR', 'LOGIC_EDITOR', ''),
-              ('PROPERTIES', 'PROPERTIES', ''),
-              ('OUTLINER', 'OUTLINER', ''),
-              ('USER_PREFERENCES', 'USER_PREFERENCES', ''),
-              ('INFO', 'INFO', ''),
-              ('FILE_BROWSER', 'FILE_BROWSER', ''),
-              ('CONSOLE', 'CONSOLE', ''),
-              ('All', 'All', '')]
+# Drop events that no longer exist in the running version of blender.
+_VALID_EVENTS = {item.identifier for item in
+                 bpy.types.Event.bl_rna.properties['type'].enum_items}
+EVENTS = [e for e in _EVENTS if e in _VALID_EVENTS]
 
-CMODE_ENUM = [('EDIT_MESH', 'EDIT_MESH', ''),
-              ('EDIT_CURVE', 'EDIT_CURVE', ''),
-              ('EDIT_SURFACE', 'EDIT_SURFACE', ''),
-              ('EDIT_TEXT', 'EDIT_TEXT', ''),
-              ('EDIT_ARMATURE', 'EDIT_ARMATURE', ''),
-              ('EDIT_METABALL', 'EDIT_METABALL', ''),
-              ('EDIT_LATTICE', 'EDIT_LATTICE', ''),
-              ('POSE', 'POSE', ''),
-              ('SCULPT', 'SCULPT', ''),
-              ('PAINT_WEIGHT', 'PAINT_WEIGHT', ''),
-              ('PAINT_VERTEX', 'PAINT_VERTEX', ''),
-              ('PAINT_TEXTURE', 'PAINT_TEXTURE', ''),
-              ('PARTICLE', 'PARTICLE', ''),
-              ('OBJECT', 'OBJECT', ''),
-              ('All', 'All', '')]
+
+def _rna_enum(struct, prop):
+    """Build EnumProperty items from blender's own enum, plus 'All'."""
+    items = [(item.identifier, item.identifier, '')
+             for item in struct.bl_rna.properties[prop].enum_items]
+    return items + [('All', 'All', '')]
+
+
+CTYPE_ENUM = _rna_enum(bpy.types.Area, 'type')
+CMODE_ENUM = _rna_enum(bpy.types.Context, 'mode')
 
 KEYSTR_DESC = ('String of characters to be used as key binding. For ex: '
                '"A B C" would mean that after pressing leader key pressing'
@@ -95,39 +71,44 @@ class LeaderKey(bpy.types.Operator):
     timeout = 0
     timenext = 0
     timestart = 0
-    binding = None
+    bindings = None
 
     def execute(self, context):
         return self.invoke(context, None)
 
     def invoke(self, context, event):
-        addon_prefs = context.user_preferences.addons[__package__].preferences
+        addon_prefs = context.preferences.addons[__package__].preferences
         self.key_string = ''
         self.timeout = addon_prefs.timeout
         self.timenext = addon_prefs.time_for_next
         self.bindings = Bindings()
-        for i in range(addon_prefs.bindings_number):
-            exec(('self.bindings.append({0}.kstr{1},'
-                  '{0}.func{1}, {0}.ctype{1}, {0}.cmode{1})'
-                 ).format('addon_prefs', i))
+        for b in addon_prefs.bindings:
+            self.bindings.append(b.kstr, b.func, b.ctype, b.cmode)
         self.timestart = time()
         wm = context.window_manager
-        self._timer = wm.event_timer_add(0.001, context.window)
-        context.window_manager.modal_handler_add(self)
+        self._timer = wm.event_timer_add(0.001, window=context.window)
+        wm.modal_handler_add(self)
         return {'RUNNING_MODAL'}
+
+    def finish(self, context):
+        context.window_manager.event_timer_remove(self._timer)
+        if context.area:
+            context.area.header_text_set(None)
 
     def modal(self, context, event):
         if event.type == 'ESC':
-            context.area.header_text_set()
+            self.finish(context)
             return {'CANCELLED'}
         if event.type in EVENTS and event.value == 'PRESS':
             self.key_string += event.type + ' '
+
+        area_type = context.area.type if context.area else 'All'
 
         # Go through possible functions trying different contexts.
         # Try first with current context and then try to find functions
         # that are correct for all contexts.
         func = self.bindings.get(kstr=self.key_string,
-                                 ctype=context.area.type,
+                                 ctype=area_type,
                                  cmode=context.mode)
         if not func:
             func = self.bindings.get(kstr=self.key_string,
@@ -135,22 +116,23 @@ class LeaderKey(bpy.types.Operator):
                                      cmode=context.mode)
         if not func:
             func = self.bindings.get(kstr=self.key_string,
-                                     ctype=context.area.type,
+                                     ctype=area_type,
                                      cmode='All')
         if not func:
             func = self.bindings.get(kstr=self.key_string,
                                      ctype='All',
                                      cmode='All')
 
-        context.area.header_text_set(self.key_string)
+        if context.area:
+            context.area.header_text_set(self.key_string)
 
         if func and (time() - self.timestart) >= self.timenext:
+            self.finish(context)
             exec(func)
-            context.area.header_text_set()
             return {'FINISHED'}
 
         if (time() - self.timestart) >= self.timeout:
-            context.area.header_text_set()
+            self.finish(context)
             return {'FINISHED'}
 
         return {'RUNNING_MODAL'}
@@ -158,7 +140,9 @@ class LeaderKey(bpy.types.Operator):
 
 class Bindings:
     """Class containing all the bindings."""
-    _bindings = {}
+
+    def __init__(self):
+        self._bindings = {}
 
     def append(self,
                kstr,
@@ -173,13 +157,7 @@ class Bindings:
         """
         # Blenders event.type has all the keys in upper case.
         kstr = kstr.upper().strip()
-        if self._bindings.get(ctype):
-            if self._bindings[ctype].get(cmode):
-                self._bindings[ctype][cmode][kstr] = func
-            else:
-                self._bindings[ctype][cmode] = {kstr: func}
-        else:
-            self._bindings[ctype] = {cmode: {kstr: func}}
+        self._bindings.setdefault(ctype, {}).setdefault(cmode, {})[kstr] = func
 
     def get(self, kstr, ctype='All', cmode='All'):
         """
@@ -192,61 +170,89 @@ class Bindings:
             return None
 
 
+class LeaderKeyBinding(bpy.types.PropertyGroup):
+    kstr: bpy.props.StringProperty(name="Key String",
+                                   description=KEYSTR_DESC)
+    func: bpy.props.StringProperty(name="Function",
+                                   description=FUNC_DESC)
+    ctype: bpy.props.EnumProperty(items=CTYPE_ENUM,
+                                  name="Context area type",
+                                  description=CTYPE_DESC,
+                                  default="All")
+    cmode: bpy.props.EnumProperty(items=CMODE_ENUM,
+                                  name="Context mode",
+                                  description=CMODE_DESC,
+                                  default="All")
+
+
+class LeaderKeyBindingAdd(bpy.types.Operator):
+    """Add new leader key binding"""
+    bl_idname = 'ui.leaderkey_binding_add'
+    bl_label = 'Add Binding'
+    bl_options = {'INTERNAL'}
+
+    def execute(self, context):
+        prefs = context.preferences.addons[__package__].preferences
+        prefs.bindings.add()
+        context.preferences.is_dirty = True
+        return {'FINISHED'}
+
+
+class LeaderKeyBindingRemove(bpy.types.Operator):
+    """Remove leader key binding"""
+    bl_idname = 'ui.leaderkey_binding_remove'
+    bl_label = 'Remove Binding'
+    bl_options = {'INTERNAL'}
+
+    index: bpy.props.IntProperty()
+
+    def execute(self, context):
+        prefs = context.preferences.addons[__package__].preferences
+        prefs.bindings.remove(self.index)
+        context.preferences.is_dirty = True
+        return {'FINISHED'}
+
+
 class LeaderKeyPreferences(bpy.types.AddonPreferences):
     bl_idname = __package__
 
-    timeout = \
-        bpy.props.FloatProperty(name="Timeout",
-                                description=("Amount of time for typing keys. "
-                                             "In seconds."),
-                                default=1.0,
-                                soft_min=0.01)
+    timeout: bpy.props.FloatProperty(
+        name="Timeout",
+        description="Amount of time for typing keys. In seconds.",
+        default=1.0,
+        soft_min=0.01)
 
-    time_for_next = \
-        bpy.props.FloatProperty(name="Wait for next",
-                                description=("Amount of time for which to wait"
-                                             " for next key if matching key is"
-                                             " already found. In seconds."),
-                                default=0.5,
-                                soft_min=0.01)
+    time_for_next: bpy.props.FloatProperty(
+        name="Wait for next",
+        description=("Amount of time for which to wait for next key if "
+                     "matching key is already found. In seconds."),
+        default=0.5,
+        soft_min=0.01)
 
-    # This one should deal with both creating and displaying set number of
-    # bindings, but couldn't get all values to initialize at same time.
-    bindings_number = bpy.props.IntProperty(name="Bindings number",
-                                            default=1,
-                                            soft_min=1,
-                                            soft_max=BINDINGS_MAX)
-
-    # Preinitialize all the bindings. This ideally should be bound by
-    # bindings_number but couldn't get it to work.
-    for i in range(BINDINGS_MAX):
-        exec(('kstr{}'
-              ' = bpy.props.StringProperty(name="Key String",'
-              'description=KEYSTR_DESC)').format(i))
-        exec(('func{}'
-              ' = bpy.props.StringProperty(name="Function",'
-              'description=FUNC_DESC)').format(i))
-        exec(('ctype{}'
-              ' = bpy.props.EnumProperty(items=CTYPE_ENUM,'
-              'name="Context area type",'
-              'description=CTYPE_DESC,'
-              'default="All")').format(i))
-        exec(('cmode{}'
-              ' = bpy.props.EnumProperty(items=CMODE_ENUM,'
-              'name="Context mode",'
-              'description=CTYPE_DESC,'
-              'default="All")').format(i))
+    bindings: bpy.props.CollectionProperty(type=LeaderKeyBinding)
 
     def draw(self, context):
         layout = self.layout
-        layout.label(text="Leader Key Preferences")
-        layout.prop(self, "bindings_number")
         layout.prop(self, "timeout")
         layout.prop(self, "time_for_next")
-        for i in range(self.bindings_number):
-            layout.label(text="Binding {}".format(i))
-            layout.prop(self, "kstr{}".format(i))
-            layout.prop(self, "func{}".format(i))
-            row = layout.row()
-            row.prop(self, "ctype{}".format(i))
-            row.prop(self, "cmode{}".format(i))
+        for i, binding in enumerate(self.bindings):
+            box = layout.box()
+            row = box.row()
+            row.label(text="Binding {}".format(i))
+            row.operator(LeaderKeyBindingRemove.bl_idname, text="",
+                         icon='X', emboss=False).index = i
+            box.prop(binding, "kstr")
+            box.prop(binding, "func")
+            row = box.row()
+            row.prop(binding, "ctype")
+            row.prop(binding, "cmode")
+        layout.operator(LeaderKeyBindingAdd.bl_idname, icon='ADD')
+
+
+classes = (
+    LeaderKey,
+    LeaderKeyBinding,
+    LeaderKeyBindingAdd,
+    LeaderKeyBindingRemove,
+    LeaderKeyPreferences,
+)

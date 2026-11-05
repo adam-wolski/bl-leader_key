@@ -12,8 +12,10 @@ Thats the functionality I tried to replicate in this add-on.
 
 # Installation
 
+Requires Blender 4.2 or newer.
+
 Download repository as zip file.
-In User Preferences window go to the Add-ons tab, in lower left corner select "Install from File" button and point it to the add-on zip.
+In Preferences window go to the Get Extensions (or Add-ons) tab, open the drop-down menu in the top right corner, select "Install from Disk..." and point it to the add-on zip.
 
 # Configuration
 
@@ -23,23 +25,23 @@ I personally am not a fan of add-ons that register keyboard shortcuts by themsel
 
 To add shortcut in blender:
 
-* Go to the Input tab in User Preferences select context in which that shortcut is to be bound by. In case of this add-on it's best to select something pretty high like Screen so you can call it whether you are in 3D View or Node Editor.
+* Go to the Keymap tab in Preferences select context in which that shortcut is to be bound by. In case of this add-on it's best to select something pretty high like Screen so you can call it whether you are in 3D View or Node Editor.
 
 * Go through context options till you get to the "Add New" button. Click it. It will create new shortcut. Type `ui.leaderkey` in the `Identifier of operator to call on input event` field, specify shortcut and you're done.
 
 ## Preferences
 
-All the preferences for add-on are available in Add-ons tab of User Preferences window.
+All the preferences for add-on are available in the Add-ons tab of Preferences window.
 
 ![alt text](http://i.imgur.com/AVDuwCN.jpg "Add-on Preferences")
 
-* `Bindings number` - Number of bindings you want to use.
+* `Add Binding` / `X` - Add a new binding or remove an existing one.
 
 * `Timeout` - Amount of time to wait if no function call was found for typed sequence. (In seconds)
 
 * `Wait For Next` - Amount of time you have to type next key if there's already function call for current sequence. (In seconds)
 
-* `Key String` - Sequence of key events separated by space. Can be almost any of the types in [event.type](https://www.blender.org/api/blender_python_api_2_77_0/bpy.types.Event.html?highlight=event.type#bpy.types.Event.type).
+* `Key String` - Sequence of key events separated by space. Can be almost any of the types in [event.type](https://docs.blender.org/api/current/bpy.types.Event.html#bpy.types.Event.type).
 
 * `Function` - Python function to be executed after sequenced is matched. Can be anything python script could call so you can type either something blender specific like: `bpy.ops.mesh.primitive_torus_add()` or generic python: `print("Hello World")`.
 
