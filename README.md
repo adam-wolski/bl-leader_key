@@ -43,7 +43,7 @@ All the preferences for add-on are available in the Add-ons tab of Preferences w
 
 * `Key String` - Sequence of key events separated by space. Can be almost any of the types in [event.type](https://docs.blender.org/api/current/bpy.types.Event.html#bpy.types.Event.type).
 
-* `Function` - Python function to be executed after sequenced is matched. Can be anything python script could call so you can type either something blender specific like: `bpy.ops.mesh.primitive_torus_add()` or generic python: `print("Hello World")`.
+* `Function` - Python function to be executed after sequenced is matched. Can be anything python script could call so you can type either something blender specific like: `bpy.ops.mesh.primitive_torus_add()` or generic python: `print("Hello World")`. Click the magnifying glass next to the field to search all available operators by name.
 
 * `Context area type` - Context area in which to use this binding. Select 'All' to not bind it to any of the specific types of the window.
 

@@ -213,6 +213,54 @@ class LeaderKeyBindingRemove(bpy.types.Operator):
         return {'FINISHED'}
 
 
+# Blender requires dynamic enum items to stay referenced from python, so
+# keep them at module level. Refreshed every time search popup is opened so
+# operators from newly enabled add-ons show up too.
+_operator_items = []
+
+
+def _refresh_operators():
+    _operator_items.clear()
+    for module_name in dir(bpy.ops):
+        module = getattr(bpy.ops, module_name)
+        for op_name in dir(module):
+            idname = '{}.{}'.format(module_name, op_name)
+            try:
+                rna = getattr(module, op_name).get_rna_type()
+            except (AttributeError, KeyError, RuntimeError):
+                continue
+            label = rna.name or op_name
+            _operator_items.append(
+                (idname, '{} ({})'.format(label, idname), rna.description))
+    _operator_items.sort(key=lambda item: item[1].lower())
+
+
+def _operator_enum(self, context):
+    return _operator_items
+
+
+class LeaderKeyBindingSearch(bpy.types.Operator):
+    """Search for an operator to use as this binding's function"""
+    bl_idname = 'ui.leaderkey_binding_search'
+    bl_label = 'Search Operator'
+    bl_options = {'INTERNAL'}
+    bl_property = 'operator'
+
+    index: bpy.props.IntProperty()
+    operator: bpy.props.EnumProperty(items=_operator_enum)
+
+    def invoke(self, context, event):
+        _refresh_operators()
+        context.window_manager.invoke_search_popup(self)
+        return {'RUNNING_MODAL'}
+
+    def execute(self, context):
+        prefs = context.preferences.addons[__package__].preferences
+        prefs.bindings[self.index].func = 'bpy.ops.{}()'.format(self.operator)
+        context.preferences.is_dirty = True
+        return {'FINISHED'}
+
+
 class LeaderKeyPreferences(bpy.types.AddonPreferences):
     bl_idname = __package__
 
@@ -242,7 +290,10 @@ class LeaderKeyPreferences(bpy.types.AddonPreferences):
             row.operator(LeaderKeyBindingRemove.bl_idname, text="",
                          icon='X', emboss=False).index = i
             box.prop(binding, "kstr")
-            box.prop(binding, "func")
+            row = box.row(align=True)
+            row.prop(binding, "func")
+            row.operator(LeaderKeyBindingSearch.bl_idname, text="",
+                         icon='VIEWZOOM').index = i
             row = box.row()
             row.prop(binding, "ctype")
             row.prop(binding, "cmode")
@@ -254,5 +305,6 @@ classes = (
     LeaderKeyBinding,
     LeaderKeyBindingAdd,
     LeaderKeyBindingRemove,
+    LeaderKeyBindingSearch,
     LeaderKeyPreferences,
 )
