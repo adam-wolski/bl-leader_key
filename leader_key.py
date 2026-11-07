@@ -72,8 +72,10 @@ class LeaderKey(bpy.types.Operator):
     key_string = ''
     timeout = 0
     timenext = 0
-    timestart = 0
+    timelast = 0
     bindings = None
+    # Function matching typed keys, waiting in case longer sequence follows
+    pending = None
 
     def execute(self, context):
         return self.invoke(context, None)
@@ -81,12 +83,13 @@ class LeaderKey(bpy.types.Operator):
     def invoke(self, context, event):
         addon_prefs = context.preferences.addons[__package__].preferences
         self.key_string = ''
+        self.pending = None
         self.timeout = addon_prefs.timeout
         self.timenext = addon_prefs.time_for_next
         self.bindings = Bindings()
         for b in addon_prefs.bindings:
             self.bindings.append(b.kstr, b.func, b.ctype, b.cmode)
-        self.timestart = time()
+        self.timelast = time()
         wm = context.window_manager
         self._timer = wm.event_timer_add(0.001, window=context.window)
         wm.modal_handler_add(self)
@@ -97,43 +100,40 @@ class LeaderKey(bpy.types.Operator):
         if context.area:
             context.area.header_text_set(None)
 
+    def run(self, context, func):
+        self.finish(context)
+        exec(func)
+        return {'FINISHED'}
+
     def modal(self, context, event):
         if event.type == 'ESC':
             self.finish(context)
             return {'CANCELLED'}
+
         if event.type in EVENTS and event.value == 'PRESS':
             self.key_string += event.type + ' '
+            self.timelast = time()
+            if context.area:
+                context.area.header_text_set(self.key_string)
 
-        area_type = context.area.type if context.area else 'All'
+            area_type = context.area.type if context.area else 'All'
+            func, longer = self.bindings.lookup(self.key_string,
+                                                area_type, context.mode)
+            if func and not longer:
+                return self.run(context, func)
+            if not func and not longer:
+                # Nothing bound to this sequence, no point waiting
+                self.finish(context)
+                return {'CANCELLED'}
+            self.pending = func
 
-        # Go through possible functions trying different contexts.
-        # Try first with current context and then try to find functions
-        # that are correct for all contexts.
-        func = self.bindings.get(kstr=self.key_string,
-                                 ctype=area_type,
-                                 cmode=context.mode)
-        if not func:
-            func = self.bindings.get(kstr=self.key_string,
-                                     ctype='All',
-                                     cmode=context.mode)
-        if not func:
-            func = self.bindings.get(kstr=self.key_string,
-                                     ctype=area_type,
-                                     cmode='All')
-        if not func:
-            func = self.bindings.get(kstr=self.key_string,
-                                     ctype='All',
-                                     cmode='All')
+        now = time()
+        if self.pending and now - self.timelast >= self.timenext:
+            return self.run(context, self.pending)
 
-        if context.area:
-            context.area.header_text_set(self.key_string)
-
-        if func and (time() - self.timestart) >= self.timenext:
-            self.finish(context)
-            exec(func)
-            return {'FINISHED'}
-
-        if (time() - self.timestart) >= self.timeout:
+        if now - self.timelast >= self.timeout:
+            if self.pending:
+                return self.run(context, self.pending)
             self.finish(context)
             return {'FINISHED'}
 
@@ -161,15 +161,23 @@ class Bindings:
         kstr = kstr.upper().strip()
         self._bindings.setdefault(ctype, {}).setdefault(cmode, {})[kstr] = func
 
-    def get(self, kstr, ctype='All', cmode='All'):
+    def lookup(self, kstr, area_type, mode):
         """
-        Get function for key_string 'kstr' bound by context type and mode:
-        'ctype', 'cmode'
+        Find function for key_string 'kstr' in given area type and mode.
+        Bindings for current context are tried first, then the ones bound to 'All'. 
+        Return (function or None, whether there are longer bindings starting with 'kstr' that could still be typed).
         """
-        try:
-            return self._bindings[ctype][cmode][kstr.upper().strip()]
-        except KeyError:
-            return None
+        kstr = kstr.upper().strip()
+        contexts = [(area_type, mode), ('All', mode),
+                    (area_type, 'All'), ('All', 'All')]
+        func = None
+        longer = False
+        for ctype, cmode in contexts:
+            bound = self._bindings.get(ctype, {}).get(cmode, {})
+            if not func:
+                func = bound.get(kstr)
+            longer = longer or any(k.startswith(kstr + ' ') for k in bound)
+        return func, longer
 
 
 CONFIG_FILE = 'bindings.json'
